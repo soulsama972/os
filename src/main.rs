@@ -1,27 +1,59 @@
 #![no_std]
 #![no_main]
+#![feature(custom_test_frameworks)]
+#![test_runner(test_runner)]
+#![reexport_test_harness_main = "test_main"]
 
+mod vga_buffer;
 use core::panic::PanicInfo;
+use core::arch::asm;
 
 
-#[panic_handler]    
-fn panic(_info: &PanicInfo) -> ! {
-    
-    loop {}
+fn test_runner(tests: &[&dyn Fn()]) {
+    println!("Running {} tests", tests.len());
+    for test in tests {
+        test();
+    }
+    exit_qemu(QemuExitCode::Success as u32);
 }
 
-static HELLO: &[u8] = b"Hello World!";
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum QemuExitCode {
+    Success = 0,
+    Failed =  u32::MAX,
+}
+
+pub fn exit_qemu(exit_code: u32) {
+    unsafe {
+        asm!(
+            "mov eax, {0:e}",
+            "out 0xf4, eax",
+            in(reg) exit_code,
+       );
+    }
+}
+
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
-    let vga_buffer = 0xb8000 as *mut u8;
-
-    for (i, &byte) in HELLO.iter().enumerate() {
-        unsafe {
-            *vga_buffer.offset(i as isize * 2) = byte;
-            *vga_buffer.offset(i as isize * 2 + 1) = 0xb;
-        }
-    }
+    println!("Hello World{}", "!");
+    #[cfg(test)]
+    test_main();
 
     loop {}
+}
+
+#[panic_handler]
+fn panic(info: &PanicInfo) -> ! {
+    println!("{}", info);
+    loop {}
+}
+
+
+#[test_case]
+fn trivial_assertion() {
+    print!("trivial assertion... ");
+    assert_eq!(1, 1);
+    println!("[ok]");
 }
